@@ -11,5 +11,5 @@ Wong Tsz Wang
 Hello, my name is Wong Tsz Wang, and I am a 3122 student. I'm working on a YouTube Summarizer app that leverages AI to generate concise and detailed summaries from YouTube videos.
 
 ## Links:
-https://github.com/your-ansonwong22
-- [Deployed Streamlit App](https://your-streamlit-app-link)
+https://github.com/ansonwong22
+- [Deployed Streamlit App](https://ansonwong22-streamlit-app-link)
