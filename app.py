@@ -8,9 +8,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Retrieve GitHub API credentials
-API_KEY = os.getenv("GITHUB_API_KEY")
-API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")  # Ensure this is correctly set
-MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")  # Ensure this is correctly set
+API_KEY = os.getenv("GITHUB_API_KEY")  # Ensure this is set in your .env file
+API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")  # Ensure this is set in your .env file
+MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")  # Ensure this is set in your .env file
 
 # Validate API keys and endpoints
 if not API_KEY or not API_ENDPOINT or not MODEL_NAME:
@@ -42,7 +42,7 @@ def extract_video_id(url):
         return url.split("youtu.be/")[-1].split("?")[0]
     return None
 
-# Function to call GitHub API (GPT-4o-mini) for transcript extraction
+# Function to call GPT-4o-mini API for transcript extraction
 def fetch_transcript(video_url):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -51,7 +51,7 @@ def fetch_transcript(video_url):
     data = {
         "model": MODEL_NAME,
         "messages": [
-            {"role": "system", "content": "Extract the transcript from the following YouTube video and return it as plain text."},
+            {"role": "system", "content": "Extract the full transcript from the following YouTube video in a structured format."},
             {"role": "user", "content": f"Video URL: {video_url}"}
         ],
         "max_tokens": 4000
@@ -59,11 +59,14 @@ def fetch_transcript(video_url):
     response = requests.post(API_ENDPOINT, json=data, headers=headers)
 
     if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
+        try:
+            return response.json()["choices"][0]["message"]["content"].strip()
+        except KeyError:
+            return None
     else:
         return None
 
-# Function to generate summary using GitHub API (GPT-4o-mini)
+# Function to generate summary using GPT-4o-mini
 def generate_summary(transcript_text, detail_level, language):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -80,11 +83,14 @@ def generate_summary(transcript_text, detail_level, language):
     response = requests.post(API_ENDPOINT, json=data, headers=headers)
 
     if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
+        try:
+            return response.json()["choices"][0]["message"]["content"].strip()
+        except KeyError:
+            return None
     else:
         return None
 
-# Function to translate text using GitHub API (GPT-4o-mini)
+# Function to translate text using GPT-4o-mini
 def translate_text(text, target_lang):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -101,7 +107,10 @@ def translate_text(text, target_lang):
     response = requests.post(API_ENDPOINT, json=data, headers=headers)
 
     if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
+        try:
+            return response.json()["choices"][0]["message"]["content"].strip()
+        except KeyError:
+            return text  # If translation fails, return the original text
     else:
         return text  # If translation fails, return the original text
 
