@@ -1,24 +1,23 @@
 import streamlit as st
 import requests
-import os
 import json
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load API keys from Streamlit secrets
+OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
+OPENROUTER_API_ENDPOINT = st.secrets["OPENROUTER_API_ENDPOINT"]
+OPENROUTER_API_MODEL_NAME = st.secrets["OPENROUTER_API_MODEL_NAME"]
 
-# Retrieve API credentials for GitHub
-GITHUB_API_KEY = os.getenv("GITHUB_API_KEY")
-GITHUB_API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")
-GITHUB_API_MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")
+GITHUB_API_KEY = st.secrets["GITHUB_API_KEY"]
+GITHUB_API_ENDPOINT = st.secrets["GITHUB_API_ENDPOINT"]
+GITHUB_API_MODEL_NAME = st.secrets["GITHUB_API_MODEL_NAME"]
 
 # Validate API keys and endpoints
-if not (GITHUB_API_KEY and GITHUB_API_ENDPOINT and GITHUB_API_MODEL_NAME):
-    st.error("❌ API Key or API Endpoint is missing! Please check your .env file.")
+if not OPENROUTER_API_KEY or not OPENROUTER_API_ENDPOINT:
+    st.error("❌ API Key or API Endpoint is missing! Please check your Streamlit secrets.")
     st.stop()
 
 # Streamlit UI
-st.title("YouTube Video Summarizer")
+st.title("🎥 YouTube Video Summarizer")
 
 # Input field for YouTube video URL
 video_url = st.text_input("Enter YouTube Video URL:")
@@ -52,42 +51,42 @@ def fetch_transcript(video_id, lang_code="en"):
     else:
         return None
 
-# Function to generate summary using GitHub API
+# Function to generate summary
 def generate_summary(transcript_text, detail_level, language):
     headers = {
-        "Authorization": f"Bearer {GITHUB_API_KEY}",
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": GITHUB_API_MODEL_NAME,
+        "model": OPENROUTER_API_MODEL_NAME,
         "messages": [
             {"role": "system", "content": f"Summarize the transcript in {language} with {detail_level} detail."},
             {"role": "user", "content": transcript_text}
         ],
         "max_tokens": 1000
     }
-    response = requests.post(GITHUB_API_ENDPOINT, json=data, headers=headers)
+    response = requests.post(OPENROUTER_API_ENDPOINT, json=data, headers=headers)
 
     if response.status_code == 200:
         return response.json()["choices"][0]["message"]["content"]
     else:
         return None
 
-# Function to translate text if no transcript in the selected language
+# Function to translate text
 def translate_text(text, target_lang):
     headers = {
-        "Authorization": f"Bearer {GITHUB_API_KEY}",
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": GITHUB_API_MODEL_NAME,
+        "model": OPENROUTER_API_MODEL_NAME,
         "messages": [
             {"role": "system", "content": f"Translate the following text to {target_lang}."},
             {"role": "user", "content": text}
         ],
         "max_tokens": 500
     }
-    response = requests.post(GITHUB_API_ENDPOINT, json=data, headers=headers)
+    response = requests.post(OPENROUTER_API_ENDPOINT, json=data, headers=headers)
 
     if response.status_code == 200:
         return response.json()["choices"][0]["message"]["content"]

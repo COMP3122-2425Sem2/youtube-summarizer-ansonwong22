@@ -1,34 +1,28 @@
-# === Python Files ===
+# Ignore Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.swp
-*.swo
 
-# === Virtual Environments ===
+# Ignore virtual environments
 venv/
-.env
 *.env
-pip-log.txt
-pip-delete-this-directory.txt
 
-# === Ignore Streamlit secrets and config ===
-.streamlit/secrets.toml
-
-# === IDE / Editor Files ===
-.vscode/
-.idea/
-*.iml
-
-# === Logs & Debugging ===
+# Ignore logs
 logs/
 *.log
 debug.log
 nohup.out
 
-# === Git-related ===
-.git/
+# Ignore Streamlit secrets
+.streamlit/secrets.toml
+
+# Ignore VSCode & JetBrains IDE settings
+.vscode/
+.idea/
+*.iml
+
+# Ignore system files
 .DS_Store
 *.bak
 *.orig
