@@ -105,7 +105,7 @@ if st.button("Generate Summary"):
         transcript_data = fetch_transcript(video_id, language_options[summary_language])
 
         if not transcript_data:
-            st.error("⚠️ Failed to fetch transcript in selected language. Trying English transcript instead.")
+            st.warning("⚠️ Failed to fetch transcript in selected language. Trying English transcript instead.")
             transcript_data = fetch_transcript(video_id, "en")  # Fallback to English
 
         if transcript_data:
@@ -113,14 +113,14 @@ if st.button("Generate Summary"):
             st.subheader("📜 Transcript")
             st.write(transcript_text)
 
+            # Automatically translate the transcript if the user selected another language
+            if summary_language != "English":
+                transcript_text = translate_text(transcript_text, summary_language)
+
             summary_text = generate_summary(transcript_text, summary_type.lower(), summary_language)
 
             if summary_text:
                 st.subheader("📌 Summary")
-                
-                if summary_language != "English":
-                    summary_text = translate_text(summary_text, summary_language)
-
                 st.write(summary_text)
 
                 # Generate section-based summary with timestamps
