@@ -9,13 +9,13 @@ from urllib.parse import urlencode
 load_dotenv()
 
 # Retrieve API credentials
-API_KEY = os.getenv("GITHUB_API_KEY")  # Using GitHub API as per your latest setup
-API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")
-MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")
+API_KEY = os.getenv("GITHUB_API_KEY")  # Change to OPENROUTER_API_KEY if needed
+API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")  # Change to OPENROUTER_API_ENDPOINT if needed
+MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")  # Change to OPENROUTER_API_MODEL_NAME if needed
 
 # Validate API keys and endpoints
 if not API_KEY or not API_ENDPOINT:
-    st.error("❌ API Key or API Endpoint is missing! Please check your .env or secrets.toml file.")
+    st.error("❌ API Key or API Endpoint is missing! Please check your .env file.")
     st.stop()
 
 # Streamlit UI
@@ -53,7 +53,7 @@ def fetch_transcript(video_id, lang_code="en"):
     else:
         return None
 
-# Function to generate summary
+# Function to generate summary using AI
 def generate_summary(transcript_text, detail_level, language):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -74,7 +74,7 @@ def generate_summary(transcript_text, detail_level, language):
     else:
         return None
 
-# Function to translate text (if required)
+# Function to translate text if transcript is only in English
 def translate_text(text, target_lang):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -93,7 +93,7 @@ def translate_text(text, target_lang):
     if response.status_code == 200:
         return response.json()["choices"][0]["message"]["content"]
     else:
-        return text  # Return original text if translation fails
+        return text  # If translation fails, return the original text
 
 # Generate Summary Button
 if st.button("Generate Summary"):
@@ -105,7 +105,7 @@ if st.button("Generate Summary"):
         transcript_data = fetch_transcript(video_id, language_options[summary_language])
 
         if not transcript_data:
-            st.error("Failed to fetch transcript. Trying default English transcript.")
+            st.error("⚠️ Failed to fetch transcript in selected language. Trying English transcript instead.")
             transcript_data = fetch_transcript(video_id, "en")  # Fallback to English
 
         if transcript_data:
@@ -133,14 +133,14 @@ if st.button("Generate Summary"):
                     st.markdown(f"**[{formatted_time}]({youtube_link})**: {segment['text']}")
 
                 # Allow editing summary
-                edited_summary = st.text_area("Edit Summary:", summary_text)
+                edited_summary = st.text_area("✏️ Edit Summary:", summary_text)
                 if st.button("Save Summary"):
-                    st.success("Summary updated successfully!")
+                    st.success("✅ Summary updated successfully!")
 
                 # Download summary
-                if st.button("Download Summary as HTML"):
+                if st.button("⬇️ Download Summary as HTML"):
                     html_content = f"<html><body><h1>Video Summary</h1><p>{edited_summary}</p></body></html>"
                     st.download_button(label="Download", data=html_content, file_name="summary.html", mime="text/html")
 
             else:
-                st.error("Error generating summary.")
+                st.error("❌ Error generating summary.")
