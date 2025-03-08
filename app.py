@@ -5,65 +5,74 @@ import json
 from dotenv import load_dotenv
 
 # Load environment variables
-dotenv_path = os.path.join(os.getcwd(), ".env")  # Ensure .env file is loaded
-load_dotenv(dotenv_path=dotenv_path)
+load_dotenv()
 
-# Retrieve API credentials from .env file
+# Retrieve API credentials (Supports GitHub API & OpenRouter API)
+GITHUB_API_KEY = os.getenv("GITHUB_API_KEY")
+GITHUB_API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")
+GITHUB_API_MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_API_ENDPOINT = os.getenv("OPENROUTER_API_ENDPOINT")
 OPENROUTER_API_MODEL_NAME = os.getenv("OPENROUTER_API_MODEL_NAME")
 
-# Check if API credentials are loaded
-if not OPENROUTER_API_KEY or not OPENROUTER_API_ENDPOINT:
-    st.error("Error: Missing API Key or Endpoint. Please check your .env file.")
+# Determine which API to use
+if GITHUB_API_KEY:
+    API_KEY = GITHUB_API_KEY
+    API_ENDPOINT = GITHUB_API_ENDPOINT
+    API_MODEL_NAME = GITHUB_API_MODEL_NAME
+elif OPENROUTER_API_KEY:
+    API_KEY = OPENROUTER_API_KEY
+    API_ENDPOINT = OPENROUTER_API_ENDPOINT
+    API_MODEL_NAME = OPENROUTER_API_MODEL_NAME
+else:
+    st.error("❌ Error: No API Key found. Please set GITHUB_API_KEY or OPENROUTER_API_KEY.")
     st.stop()
 
 # Streamlit App UI
 st.title("YouTube Summarizer App")
 st.write("Enter a YouTube video URL to generate a structured summary.")
 
+# Language selection
+language_options = {"English": "en", "Traditional Chinese": "zh-TW", "Simplified Chinese": "zh-CN"}
+selected_language = st.selectbox("Select Summary Language:", list(language_options.keys()))
+
 # Input field for YouTube video URL
 video_url = st.text_input("Enter YouTube Video URL:")
 
-# Function to extract video ID from YouTube URL
-def extract_video_id(video_url):
-    if "v=" in video_url:
-        return video_url.split("v=")[-1].split("&")[0]
-    elif "youtu.be/" in video_url:
-        return video_url.split("youtu.be/")[-1].split("?")[0]
-    else:
-        return None
+# Extract video ID from URL
+def extract_video_id(url):
+    if "v=" in url:
+        return url.split("v=")[-1]
+    elif "youtu.be/" in url:
+        return url.split("youtu.be/")[-1].split("?")[0]
+    return None
 
-# Function to fetch YouTube transcript from proxy API
-def fetch_transcript(video_url):
+# Fetch transcript from proxy API
+def fetch_transcript(video_url, lang_code):
     video_id = extract_video_id(video_url)
     if not video_id:
         st.error("Invalid YouTube URL. Please enter a valid video URL.")
         return None
 
-    proxy_api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?password=for_demo&video_id={video_id}"
+    proxy_api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?password=for_demo&language_code={lang_code}&video_id={video_id}"
     response = requests.get(proxy_api_url)
 
     if response.status_code == 200:
-        transcript_data = response.json()
-        if "transcript" in transcript_data:
-            return transcript_data
-        else:
-            st.error("Error: Transcript data is missing in the response.")
-            return None
+        return response.json()
     else:
-        st.error(f"Error: Unable to fetch transcript. Status code: {response.status_code}")
+        st.error(f"Error fetching transcript. Status code: {response.status_code}")
         return None
 
-# Function to generate a structured summary using OpenRouter API
+# Generate summary using OpenRouter or GitHub API
 def generate_summary(transcript_text):
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
 
     data = {
-        "model": OPENROUTER_API_MODEL_NAME,
+        "model": API_MODEL_NAME,
         "messages": [
             {"role": "system", "content": "Summarize the transcript into structured sections with timestamps."},
             {"role": "user", "content": transcript_text}
@@ -71,24 +80,19 @@ def generate_summary(transcript_text):
         "max_tokens": 500
     }
 
-    response = requests.post(OPENROUTER_API_ENDPOINT, json=data, headers=headers)
+    response = requests.post(API_ENDPOINT, json=data, headers=headers)
 
     if response.status_code == 200:
-        response_json = response.json()
-        if "choices" in response_json and len(response_json["choices"]) > 0:
-            return response_json["choices"][0]["message"]["content"]
-        else:
-            st.error("Error: API response format is incorrect.")
-            return None
+        return response.json()["choices"][0]["message"]["content"]
     else:
-        st.error(f"Error: Unable to generate summary. Status code: {response.status_code}")
+        st.error(f"Error generating summary. Status code: {response.status_code}")
         return None
 
-# Function to process the summary into sections with timestamps
+# Extract structured sections from summary
 def extract_sections(summary_text):
     try:
         sections = []
-        paragraphs = summary_text.split("\n\n")  
+        paragraphs = summary_text.split("\n\n")
 
         for para in paragraphs:
             if ":" in para:
@@ -102,12 +106,12 @@ def extract_sections(summary_text):
                 })
         return sections
     except Exception as e:
-        st.error(f"Error: Unable to process summary: {e}")
+        st.error(f"Error processing summary: {e}")
         return None
 
-# Main logic
+# Process and display results
 if video_url:
-    transcript_data = fetch_transcript(video_url)
+    transcript_data = fetch_transcript(video_url, language_options[selected_language])
 
     if transcript_data:
         st.subheader("Video Transcript")
@@ -125,3 +129,6 @@ if video_url:
                     for section in sections:
                         st.subheader(f"{section['title']} - {section['timestamp']}")
                         st.write(section["summary"])
+
+                # Download Summary as HTML
+                st.download_button("Download Summary as HTML", summary_text, file_name="summary.html", mime="text/html")
