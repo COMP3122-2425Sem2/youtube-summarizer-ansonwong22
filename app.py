@@ -5,14 +5,18 @@ import json
 from dotenv import load_dotenv
 from urllib.parse import urlencode
 
-# Load environment variables from secrets
-OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
-OPENROUTER_API_ENDPOINT = st.secrets["OPENROUTER_API_ENDPOINT"]
-OPENROUTER_API_MODEL_NAME = st.secrets["OPENROUTER_API_MODEL_NAME"]
+# Load environment variables
+load_dotenv()
 
-GITHUB_API_KEY = st.secrets["GITHUB_API_KEY"]
-GITHUB_API_ENDPOINT = st.secrets["GITHUB_API_ENDPOINT"]
-GITHUB_API_MODEL_NAME = st.secrets["GITHUB_API_MODEL_NAME"]
+# Retrieve API credentials
+API_KEY = os.getenv("GITHUB_API_KEY")  # Using GitHub API as per your latest setup
+API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")
+MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")
+
+# Validate API keys and endpoints
+if not API_KEY or not API_ENDPOINT:
+    st.error("❌ API Key or API Endpoint is missing! Please check your .env or secrets.toml file.")
+    st.stop()
 
 # Streamlit UI
 st.title("🎥 YouTube Video Summarizer")
@@ -52,42 +56,39 @@ def fetch_transcript(video_id, lang_code="en"):
 # Function to generate summary
 def generate_summary(transcript_text, detail_level, language):
     headers = {
-        "Authorization": f"Bearer {GITHUB_API_KEY}",
+        "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": GITHUB_API_MODEL_NAME,
+        "model": MODEL_NAME,
         "messages": [
             {"role": "system", "content": f"Summarize the transcript in {language} with {detail_level} detail."},
             {"role": "user", "content": transcript_text}
         ],
         "max_tokens": 1000
     }
-    response = requests.post(GITHUB_API_ENDPOINT, json=data, headers=headers)
+    response = requests.post(API_ENDPOINT, json=data, headers=headers)
 
     if response.status_code == 200:
         return response.json()["choices"][0]["message"]["content"]
     else:
         return None
 
-# Function to translate text if needed
+# Function to translate text (if required)
 def translate_text(text, target_lang):
-    if target_lang == "English":
-        return text  # No translation needed
-    
     headers = {
-        "Authorization": f"Bearer {GITHUB_API_KEY}",
+        "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": GITHUB_API_MODEL_NAME,
+        "model": MODEL_NAME,
         "messages": [
             {"role": "system", "content": f"Translate the following text to {target_lang}."},
             {"role": "user", "content": text}
         ],
         "max_tokens": 500
     }
-    response = requests.post(GITHUB_API_ENDPOINT, json=data, headers=headers)
+    response = requests.post(API_ENDPOINT, json=data, headers=headers)
 
     if response.status_code == 200:
         return response.json()["choices"][0]["message"]["content"]
