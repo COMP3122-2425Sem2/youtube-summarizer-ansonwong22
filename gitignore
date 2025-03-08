@@ -1,17 +1,34 @@
-# Ignore Python cache and compiled files
+# === Python Files ===
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.swp
+*.swo
 
-# Ignore virtual environments
+# === Virtual Environments ===
 venv/
-myvenv/
+.env/
+*.env
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Ignore Streamlit secrets and configuration files
+# === Ignore Streamlit secrets and config ===
 .streamlit/secrets.toml
 
-# Ignore system files
+# === IDE / Editor Files ===
+.vscode/
+.idea/
+*.iml
+
+# === Logs & Debugging ===
+logs/
+*.log
+debug.log
+nohup.out
+
+# === Git-related ===
+.git/
 .DS_Store
+*.bak
+*.orig
