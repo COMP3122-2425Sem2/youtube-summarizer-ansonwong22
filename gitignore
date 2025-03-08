@@ -1,4 +1,4 @@
-# Ignore Python cache
+# Ignore Python cache and compiled files
 __pycache__/
 *.pyc
 *.pyo
@@ -6,23 +6,12 @@ __pycache__/
 
 # Ignore virtual environments
 venv/
-*.env
+myvenv/
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Ignore logs
-logs/
-*.log
-debug.log
-nohup.out
-
-# Ignore Streamlit secrets
+# Ignore Streamlit secrets and configuration files
 .streamlit/secrets.toml
-
-# Ignore VSCode & JetBrains IDE settings
-.vscode/
-.idea/
-*.iml
 
 # Ignore system files
 .DS_Store
-*.bak
-*.orig
