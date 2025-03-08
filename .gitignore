@@ -39,3 +39,4 @@ nohup.out
 .env
 .env
 .streamlit/secrets.toml
+.env
