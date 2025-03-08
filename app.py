@@ -2,121 +2,139 @@ import streamlit as st
 import requests
 import os
 import json
-import pandas as pd
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Retrieve API credentials from .env file or Streamlit Secrets
+# Retrieve API credentials from environment variables or Streamlit Secrets
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", st.secrets.get("OPENROUTER_API_KEY"))
 GITHUB_API_KEY = os.getenv("GITHUB_API_KEY", st.secrets.get("GITHUB_API_KEY"))
-
 OPENROUTER_API_ENDPOINT = os.getenv("OPENROUTER_API_ENDPOINT", st.secrets.get("OPENROUTER_API_ENDPOINT"))
 GITHUB_API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT", st.secrets.get("GITHUB_API_ENDPOINT"))
-
 OPENROUTER_API_MODEL_NAME = os.getenv("OPENROUTER_API_MODEL_NAME", st.secrets.get("OPENROUTER_API_MODEL_NAME"))
 GITHUB_API_MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME", st.secrets.get("GITHUB_API_MODEL_NAME"))
 
-# Language options for summary
-LANGUAGE_OPTIONS = {
-    "English": "en",
-    "Traditional Chinese": "zh-Hant",
-    "Simplified Chinese": "zh-CN"
-}
+# Validate API keys
+if not OPENROUTER_API_KEY and not GITHUB_API_KEY:
+    st.error("Missing API Key. Please set up the API keys in your environment variables or Streamlit Secrets.")
+    st.stop()
 
-# Streamlit UI
-st.title("YouTube Summarizer")
+# Streamlit App UI
+st.title("YouTube Summarizer App")
+st.write("Enter a YouTube video URL to generate a structured summary.")
+
+# Input field for YouTube video URL
 video_url = st.text_input("Enter YouTube Video URL:")
-selected_language = st.selectbox("Select Summary Language:", list(LANGUAGE_OPTIONS.keys()))
 
-# Function to extract video ID
-def extract_video_id(url):
-    if "v=" in url:
-        return url.split("v=")[-1].split("&")[0]
-    elif "youtu.be/" in url:
-        return url.split("youtu.be/")[-1].split("?")[0]
-    return None
+# Language selection
+LANGUAGES = {
+    "English": "en",
+    "Simplified Chinese": "zh-CN",
+    "Traditional Chinese": "zh-TW",
+    "Spanish": "es",
+    "French": "fr",
+    "German": "de"
+}
+selected_language = st.selectbox("Choose Summary Language", list(LANGUAGES.keys()))
 
-# Fetch transcript
-def fetch_transcript(video_id, lang_code):
-    api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?language_code={lang_code}&password=for_demo&video_id={video_id}"
-    response = requests.get(api_url)
-    
-    if response.status_code == 200:
-        return response.json()["transcript"]
-    else:
-        st.error(f"Failed to fetch transcript. Error Code: {response.status_code}")
+# Summary Detail Level
+summary_type = st.radio("Select Summary Type", ["Basic", "Detailed"])
+
+# Extract video ID
+def extract_video_id(video_url):
+    import re
+    match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", video_url)
+    return match.group(1) if match else None
+
+# Fetch YouTube transcript
+def fetch_transcript(video_url):
+    video_id = extract_video_id(video_url)
+    if not video_id:
+        st.error("Invalid YouTube URL. Please enter a valid video URL.")
         return None
 
-# Generate summary
-def generate_summary(text, detail_level="basic"):
+    proxy_api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?password=for_demo&video_id={video_id}"
+
+    try:
+        response = requests.get(proxy_api_url)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.warning(f"Transcript not found. Using English summary for translation. (Error: {response.status_code})")
+            return None
+    except requests.exceptions.RequestException as e:
+        st.error("Failed to fetch transcript. Check your network connection.")
+        return None
+
+# Generate Summary using AI
+def generate_summary(transcript_text, detail_level="Basic", language="English"):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
+
+    prompt = f"Summarize this transcript in {language}. Format it with structured sections."
+    if detail_level == "Detailed":
+        prompt += " Provide an in-depth summary."
+    else:
+        prompt += " Keep it short and concise."
+
     data = {
         "model": OPENROUTER_API_MODEL_NAME,
         "messages": [
-            {"role": "system", "content": f"Summarize the following text in {selected_language}. Make it {detail_level}."},
-            {"role": "user", "content": text}
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": transcript_text}
         ],
         "max_tokens": 500
     }
-    response = requests.post(OPENROUTER_API_ENDPOINT, json=data, headers=headers)
 
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        st.error(f"Error generating summary. API Response: {response.status_code}")
+    try:
+        response = requests.post(OPENROUTER_API_ENDPOINT, json=data, headers=headers)
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"]
+        else:
+            st.error(f"Error generating summary. API Response: {response.status_code} - {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        st.error("Error connecting to AI model API. Check your API key and internet connection.")
         return None
 
-# Generate structured summary with timestamps
-def generate_detailed_summary(text):
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
+# Translate Summary if Needed
+def translate_text(text, target_language_code):
+    translation_api_url = "https://api.mymemory.translated.net/get"
+    params = {
+        "q": text,
+        "langpair": f"en|{target_language_code}"
     }
-    data = {
-        "model": OPENROUTER_API_MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": f"Provide a detailed, structured summary with timestamps for this transcript in {selected_language}."},
-            {"role": "user", "content": text}
-        ],
-        "max_tokens": 1000
-    }
-    response = requests.post(OPENROUTER_API_ENDPOINT, json=data, headers=headers)
 
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        st.error(f"Error generating detailed summary. API Response: {response.status_code}")
-        return None
+    try:
+        response = requests.get(translation_api_url, params=params)
+        if response.status_code == 200:
+            return response.json()["responseData"]["translatedText"]
+        else:
+            st.warning(f"Translation API error. Returning English summary. (Error: {response.status_code})")
+            return text
+    except requests.exceptions.RequestException as e:
+        st.warning("Translation failed. Returning English summary.")
+        return text
 
-# Process transcript
+# Process Summary
 if video_url:
-    video_id = extract_video_id(video_url)
-    if video_id:
-        transcript_data = fetch_transcript(video_id, LANGUAGE_OPTIONS[selected_language])
-        if transcript_data:
-            transcript_text = " ".join([segment["text"] for segment in transcript_data])
-            st.subheader("Transcript")
-            st.text_area("Full Transcript", transcript_text, height=200)
+    transcript_data = fetch_transcript(video_url)
 
-            if st.button("Generate Basic Summary"):
-                summary_text = generate_summary(transcript_text, "basic")
-                if summary_text:
-                    st.subheader("Summary")
-                    st.write(summary_text)
+    if transcript_data:
+        transcript_text = " ".join([segment['text'] for segment in transcript_data['transcript']])
+    else:
+        transcript_text = "No transcript available. AI will summarize in English."
 
-            if st.button("Generate Detailed Summary"):
-                detailed_summary_text = generate_detailed_summary(transcript_text)
-                if detailed_summary_text:
-                    st.subheader("Detailed Summary")
-                    st.write(detailed_summary_text)
+    if st.button("Generate Summary"):
+        summary_text = generate_summary(transcript_text, summary_type, "English")
 
-            if st.button("Download Summary"):
-                summary_file = f"summary_{video_id}.html"
-                with open(summary_file, "w", encoding="utf-8") as f:
-                    f.write(summary_text)
-                st.download_button("Download as HTML", data=summary_text, file_name=summary_file)
+        if summary_text:
+            # Translate if the selected language is NOT English
+            if LANGUAGES[selected_language] != "en":
+                summary_text = translate_text(summary_text, LANGUAGES[selected_language])
+
+            st.subheader("Generated Summary")
+            st.write(summary_text)
