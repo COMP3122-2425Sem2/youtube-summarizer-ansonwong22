@@ -18,7 +18,7 @@ if not API_KEY or not API_ENDPOINT or not MODEL_NAME:
     st.stop()
 
 # Streamlit UI
-st.title("🎥 YouTube Video Summarizer")
+st.title("🎥 YouTube Video Summarizer (Powered by GPT-4o-mini)")
 
 # Input field for YouTube video URL
 video_url = st.text_input("Enter YouTube Video URL:")
@@ -42,17 +42,28 @@ def extract_video_id(url):
         return url.split("youtu.be/")[-1].split("?")[0]
     return None
 
-# Function to fetch transcript using the proxy API
-def fetch_transcript(video_id, lang_code="en"):
-    proxy_api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?password=for_demo&video_id={video_id}&language_code={lang_code}"
-    response = requests.get(proxy_api_url)
-    
+# Function to call GPT-4o-mini API for transcript extraction
+def fetch_transcript_from_gpt(video_url):
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": "Extract the transcript from the following YouTube video and return it as plain text."},
+            {"role": "user", "content": f"Video URL: {video_url}"}
+        ],
+        "max_tokens": 4000
+    }
+    response = requests.post(API_ENDPOINT, json=data, headers=headers)
+
     if response.status_code == 200:
-        return response.json()
+        return response.json()["choices"][0]["message"]["content"]
     else:
         return None
 
-# Function to generate summary using GitHub API
+# Function to generate summary using GPT-4o-mini
 def generate_summary(transcript_text, detail_level, language):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -73,7 +84,7 @@ def generate_summary(transcript_text, detail_level, language):
     else:
         return None
 
-# Function to translate text using GitHub API
+# Function to translate text using GPT-4o-mini
 def translate_text(text, target_lang):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -94,7 +105,7 @@ def translate_text(text, target_lang):
     else:
         return text  # If translation fails, return the original text
 
-# Function to format timestamp to hh:mm:ss
+# Function to format timestamps (not needed anymore since GPT is generating transcript)
 def format_timestamp(seconds):
     return f"{int(seconds // 3600):02}:{int((seconds % 3600) // 60):02}:{int(seconds % 60):02}"
 
@@ -103,20 +114,20 @@ if st.button("Generate Summary"):
     video_id = extract_video_id(video_url)
     
     if not video_id:
-        st.error("Invalid YouTube URL. Please enter a valid video URL.")
+        st.error("❌ Invalid YouTube URL. Please enter a valid video URL.")
     else:
-        transcript_data = fetch_transcript(video_id, language_options[summary_language])
+        # Fetch transcript using GPT
+        st.info("⏳ Fetching transcript using GPT-4o-mini...")
+        transcript_text = fetch_transcript_from_gpt(video_url)
 
-        if not transcript_data:
-            st.warning("⚠️ Failed to fetch transcript in selected language. Trying English transcript instead.")
-            transcript_data = fetch_transcript(video_id, "en")  # Fallback to English
-
-        if transcript_data:
-            transcript_text = " ".join([segment['text'] for segment in transcript_data['transcript']])
+        if not transcript_text:
+            st.error("❌ Failed to extract transcript using GPT. Try a different video.")
+        else:
             st.subheader("📜 Transcript")
             st.write(transcript_text)
 
-            # Generate the summary
+            # Generate the summary using GPT-4o-mini
+            st.info("⏳ Generating summary using GPT-4o-mini...")
             summary_text = generate_summary(transcript_text, summary_type.lower(), "English")
 
             if summary_text:
@@ -125,25 +136,12 @@ if st.button("Generate Summary"):
 
                 # Translate summary if selected language is not English
                 if summary_language in ["Traditional Chinese", "Simplified Chinese"]:
+                    st.info(f"⏳ Translating summary to {summary_language} using GPT-4o-mini...")
                     translated_summary = translate_text(summary_text, language_options[summary_language])
                     st.subheader(f"📌 Summary ({summary_language})")
                     st.write(translated_summary)
                 else:
                     translated_summary = summary_text  # Keep original if English is selected
-
-                # Generate section-based summary with timestamps
-                st.subheader("⏳ Sections")
-                section_summaries = []
-                
-                for segment in transcript_data['transcript']:
-                    start_time = segment['start']
-                    formatted_time = format_timestamp(start_time)
-                    youtube_link = f"{video_url}&t={int(start_time)}"
-                    
-                    section_summary = f"**[{formatted_time}]({youtube_link})**: {segment['text']}"
-                    section_summaries.append(section_summary)
-                
-                st.markdown("\n\n".join(section_summaries))
 
                 # Editable summary
                 edited_summary = st.text_area("✏️ Edit Summary:", translated_summary)
