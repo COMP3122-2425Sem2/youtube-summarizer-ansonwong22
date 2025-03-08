@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-import os
+import openai
 import json
 from dotenv import load_dotenv
 
