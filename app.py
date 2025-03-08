@@ -1,8 +1,7 @@
 import os
 import streamlit as st
-import json
 import toml
-from llm import answer  # Import the function from llm.py
+from llm import answer  # Import GPT-4o-mini function from llm.py
 
 # Load API key from credentials.toml
 file_path = 'credentials.toml'
@@ -17,7 +16,7 @@ else:
 if 'GITHUB' not in secrets or 'GITHUB_API_KEY' not in secrets['GITHUB']:
     st.error("❌ GitHub API key not found in credentials.toml.")
     st.stop()
-    
+
 # Streamlit UI
 st.title("🎥 YouTube Video Summarizer (GPT-4o-mini via GitHub API)")
 
@@ -43,7 +42,7 @@ def extract_video_id(url):
         return url.split("youtu.be/")[-1].split("?")[0]
     return None
 
-# Function to fetch transcript using GPT-4o-mini (via llm.py)
+# Function to fetch transcript using GPT-4o-mini
 def fetch_transcript(video_url):
     system_prompt = "Extract the transcript from the following YouTube video and return it as plain text."
     return answer(system_prompt, f"Video URL: {video_url}", model_type="github")
@@ -57,10 +56,6 @@ def generate_summary(transcript_text, detail_level, language):
 def translate_text(text, target_lang):
     system_prompt = f"Translate the following text to {target_lang}."
     return answer(system_prompt, text, model_type="github")
-
-# Function to format timestamps (for future enhancement if timestamps are extracted)
-def format_timestamp(seconds):
-    return f"{int(seconds // 3600):02}:{int((seconds % 3600) // 60):02}:{int(seconds % 60):02}"
 
 # Generate Summary Button
 if st.button("Generate Summary"):
