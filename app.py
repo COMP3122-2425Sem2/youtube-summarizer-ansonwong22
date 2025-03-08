@@ -5,11 +5,12 @@ import json
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+dotenv_path = os.path.join(os.getcwd(), ".env")  # Ensure .env file is loaded
+load_dotenv(dotenv_path=dotenv_path)
 
 # Retrieve API credentials from .env file
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_API_ENDPOINT = os.getenv("OPENROUTER_API_ENDPOINT")  
+OPENROUTER_API_ENDPOINT = os.getenv("OPENROUTER_API_ENDPOINT")
 OPENROUTER_API_MODEL_NAME = os.getenv("OPENROUTER_API_MODEL_NAME")
 
 # Check if API credentials are loaded
