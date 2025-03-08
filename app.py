@@ -8,10 +8,10 @@ from urllib.parse import urlencode
 # Load environment variables
 load_dotenv()
 
-# Retrieve API credentials
-API_KEY = os.getenv("GITHUB_API_KEY")  # Change to OPENROUTER_API_KEY if needed
-API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")  # Change to OPENROUTER_API_ENDPOINT if needed
-MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")  # Change to OPENROUTER_API_MODEL_NAME if needed
+# Retrieve API credentials (supports GitHub Model and OpenRouter)
+API_KEY = os.getenv("GITHUB_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT") or os.getenv("OPENROUTER_API_ENDPOINT")
+MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME") or os.getenv("OPENROUTER_API_MODEL_NAME")
 
 # Validate API keys and endpoints
 if not API_KEY or not API_ENDPOINT:
@@ -33,7 +33,7 @@ language_options = {
 summary_language = st.selectbox("Select summary language:", list(language_options.keys()))
 
 # Summary detail level
-summary_type = st.radio("Choose summary detail level:", ["Concise", "Detailed", "Fun", "Timestamped"])
+summary_type = st.radio("Choose summary detail level:", ["Basic", "Detailed", "Fun"])
 
 # Function to extract video ID
 def extract_video_id(url):
@@ -53,17 +53,16 @@ def fetch_transcript(video_id, lang_code="en"):
     else:
         return None
 
-# Function to generate AI summary
+# Function to generate summary using AI
 def generate_summary(transcript_text, detail_level, language):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
-    prompt = f"Summarize the transcript in {language} with a {detail_level.lower()} style."
     data = {
         "model": MODEL_NAME,
         "messages": [
-            {"role": "system", "content": prompt},
+            {"role": "system", "content": f"Summarize the transcript in {language} with {detail_level} detail."},
             {"role": "user", "content": transcript_text}
         ],
         "max_tokens": 1000
@@ -75,7 +74,28 @@ def generate_summary(transcript_text, detail_level, language):
     else:
         return None
 
-# Function to translate summary
+# Function to extract keywords from summary
+def extract_keywords(summary):
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": "Extract important keywords from the following summary."},
+            {"role": "user", "content": summary}
+        ],
+        "max_tokens": 100
+    }
+    response = requests.post(API_ENDPOINT, json=data, headers=headers)
+
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"]
+    else:
+        return "No keywords available."
+
+# Function to translate text if transcript is only in English
 def translate_text(text, target_lang):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -94,7 +114,7 @@ def translate_text(text, target_lang):
     if response.status_code == 200:
         return response.json()["choices"][0]["message"]["content"]
     else:
-        return text  # Return original text if translation fails
+        return text  # If translation fails, return the original text
 
 # Generate Summary Button
 if st.button("Generate Summary"):
@@ -106,37 +126,47 @@ if st.button("Generate Summary"):
         transcript_data = fetch_transcript(video_id, language_options[summary_language])
 
         if not transcript_data:
-            st.warning("⚠️ Failed to fetch transcript in selected language. Trying English transcript instead.")
-            transcript_data = fetch_transcript(video_id, "en")
+            st.error("⚠️ Failed to fetch transcript in selected language. Trying English transcript instead.")
+            transcript_data = fetch_transcript(video_id, "en")  # Fallback to English
 
         if transcript_data:
             transcript_text = " ".join([segment['text'] for segment in transcript_data['transcript']])
             st.subheader("📜 Transcript")
             st.write(transcript_text)
 
-            summary_text = generate_summary(transcript_text, summary_type, summary_language)
-            
+            summary_text = generate_summary(transcript_text, summary_type.lower(), summary_language)
+
             if summary_text:
                 st.subheader("📌 Summary")
+                
                 if summary_language != "English":
                     summary_text = translate_text(summary_text, summary_language)
+
                 st.write(summary_text)
 
-                # Generate section-based summary with timestamps
+                # Generate section-based summary with clickable timestamps
                 st.subheader("⏳ Sections")
                 for segment in transcript_data['transcript']:
                     start_time = segment['start']
                     formatted_time = f"{int(start_time // 3600):02}:{int((start_time % 3600) // 60):02}:{int(start_time % 60):02}"
                     youtube_link = f"{video_url}&t={int(start_time)}"
+                    
                     st.markdown(f"**[{formatted_time}]({youtube_link})**: {segment['text']}")
+
+                # Extract and display keywords
+                st.subheader("🔑 Keywords")
+                keywords = extract_keywords(summary_text)
+                st.write(keywords)
 
                 # Allow editing summary
                 edited_summary = st.text_area("✏️ Edit Summary:", summary_text)
                 if st.button("Save Summary"):
                     st.success("✅ Summary updated successfully!")
 
-                # Download summary options
-                st.download_button("⬇️ Download Summary as TXT", edited_summary, file_name="summary.txt")
-                st.download_button("⬇️ Download Summary as HTML", f"<html><body><h1>Video Summary</h1><p>{edited_summary}</p></body></html>", file_name="summary.html", mime="text/html")
+                # Download summary
+                if st.button("⬇️ Download Summary as HTML"):
+                    html_content = f"<html><body><h1>Video Summary</h1><p>{edited_summary}</p></body></html>"
+                    st.download_button(label="Download", data=html_content, file_name="summary.html", mime="text/html")
+
             else:
                 st.error("❌ Error generating summary.")
