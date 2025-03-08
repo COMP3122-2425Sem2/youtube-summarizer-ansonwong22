@@ -1,24 +1,25 @@
-import streamlit as st
-import requests
 import os
+import streamlit as st
 import json
-from dotenv import load_dotenv
+import toml
+from llm import answer  # Import the function from llm.py
 
-# Load environment variables
-load_dotenv()
-
-# Retrieve GitHub API credentials
-API_KEY = os.getenv("GITHUB_API_KEY")
-API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")
-MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")
-
-# Validate API keys and endpoints
-if not API_KEY or not API_ENDPOINT or not MODEL_NAME:
-    st.error("❌ Missing API Key, Endpoint, or Model Name. Please check your .env file.")
+# Load API key from credentials.toml
+file_path = 'credentials.toml'
+if os.path.exists(file_path):
+    with open(file_path, 'r') as f:
+        secrets = toml.load(f)
+else:
+    st.error("❌ Credentials file not found. Please create 'credentials.toml'.")
     st.stop()
 
+# Validate API key for GitHub API
+if 'GITHUB' not in secrets or 'GITHUB_API_KEY' not in secrets['GITHUB']:
+    st.error("❌ GitHub API key not found in credentials.toml.")
+    st.stop()
+    
 # Streamlit UI
-st.title("🎥 YouTube Video Summarizer (Powered by GPT-4o-mini)")
+st.title("🎥 YouTube Video Summarizer (GPT-4o-mini via GitHub API)")
 
 # Input field for YouTube video URL
 video_url = st.text_input("Enter YouTube Video URL:")
@@ -42,70 +43,22 @@ def extract_video_id(url):
         return url.split("youtu.be/")[-1].split("?")[0]
     return None
 
-# Function to call GPT-4o-mini API for transcript extraction
-def fetch_transcript_from_gpt(video_url):
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": "Extract the transcript from the following YouTube video and return it as plain text."},
-            {"role": "user", "content": f"Video URL: {video_url}"}
-        ],
-        "max_tokens": 4000
-    }
-    response = requests.post(API_ENDPOINT, json=data, headers=headers)
-
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        return None
+# Function to fetch transcript using GPT-4o-mini (via llm.py)
+def fetch_transcript(video_url):
+    system_prompt = "Extract the transcript from the following YouTube video and return it as plain text."
+    return answer(system_prompt, f"Video URL: {video_url}", model_type="github")
 
 # Function to generate summary using GPT-4o-mini
 def generate_summary(transcript_text, detail_level, language):
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": f"Summarize the transcript in {language} with {detail_level} detail."},
-            {"role": "user", "content": transcript_text}
-        ],
-        "max_tokens": 1000
-    }
-    response = requests.post(API_ENDPOINT, json=data, headers=headers)
-
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        return None
+    system_prompt = f"Summarize the transcript in {language} with {detail_level} detail."
+    return answer(system_prompt, transcript_text, model_type="github")
 
 # Function to translate text using GPT-4o-mini
 def translate_text(text, target_lang):
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": f"Translate the following text to {target_lang}."},
-            {"role": "user", "content": text}
-        ],
-        "max_tokens": 1000
-    }
-    response = requests.post(API_ENDPOINT, json=data, headers=headers)
+    system_prompt = f"Translate the following text to {target_lang}."
+    return answer(system_prompt, text, model_type="github")
 
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        return text  # If translation fails, return the original text
-
-# Function to format timestamps (not needed anymore since GPT is generating transcript)
+# Function to format timestamps (for future enhancement if timestamps are extracted)
 def format_timestamp(seconds):
     return f"{int(seconds // 3600):02}:{int((seconds % 3600) // 60):02}:{int(seconds % 60):02}"
 
@@ -116,9 +69,9 @@ if st.button("Generate Summary"):
     if not video_id:
         st.error("❌ Invalid YouTube URL. Please enter a valid video URL.")
     else:
-        # Fetch transcript using GPT
+        # Fetch transcript using GPT-4o-mini
         st.info("⏳ Fetching transcript using GPT-4o-mini...")
-        transcript_text = fetch_transcript_from_gpt(video_url)
+        transcript_text = fetch_transcript(video_url)
 
         if not transcript_text:
             st.error("❌ Failed to extract transcript using GPT. Try a different video.")
