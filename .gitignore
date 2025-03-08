@@ -32,3 +32,5 @@ nohup.out
 .DS_Store
 *.bak
 *.orig
+.env
+.streamlit/secrets.toml
