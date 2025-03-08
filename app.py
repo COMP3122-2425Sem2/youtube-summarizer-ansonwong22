@@ -1,17 +1,16 @@
 import streamlit as st
 import requests
-import openai
-from dotenv import load_dotenv
 import os
 import json
+from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# API credentials
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_API_ENDPOINT = os.getenv("OPENROUTER_API_ENDPOINT")
-OPENROUTER_API_MODEL_NAME = os.getenv("OPENROUTER_API_MODEL_NAME")
+# API Credentials
+OPENROUTER_API_KEY = os.getenv(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)
+OPENROUTER_API_ENDPOINT = os.getenv(https://openrouter.ai/api/v1/chat/completions)  
+OPENROUTER_API_MODEL_NAME = os.getenv(gpt-4o-mini)  
 
 # Streamlit App UI
 st.title("🎥 YouTube Summarizer App")
@@ -20,46 +19,78 @@ st.write("Enter a YouTube video URL to generate a structured summary.")
 # Input field for YouTube video URL
 video_url = st.text_input("🔗 Enter YouTube Video URL:")
 
-# Function to fetch YouTube transcript from the proxy API
+# Function to extract video ID from a YouTube URL
+def extract_video_id(video_url):
+    if "v=" in video_url:
+        return video_url.split("v=")[-1]
+    elif "youtu.be/" in video_url:
+        return video_url.split("youtu.be/")[-1].split("?")[0]
+    else:
+        return None
+
+# Function to fetch YouTube transcript from proxy API
 def fetch_transcript(video_url):
-    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
-    response = requests.get(f"{OPENROUTER_API_ENDPOINT}/transcript", params={"url": video_url}, headers=headers)
+    video_id = extract_video_id(video_url)
+    if not video_id:
+        st.error("Invalid YouTube URL. Please enter a valid video URL.")
+        return None
+
+    # Proxy API URL provided by your professor
+    proxy_api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?password=for_demo&video_id={video_id}"
     
+    # Make the API request
+    response = requests.get(proxy_api_url)
+
     if response.status_code == 200:
         return response.json()
     else:
         st.error(f"Error: Unable to fetch transcript. Status code: {response.status_code}")
         return None
 
-# Function to generate a structured summary using GPT-4o-mini
+# Function to generate a structured summary using OpenRouter API
 def generate_summary(transcript_text):
-    openai.api_key = OPENROUTER_API_KEY
-    
-    response = openai.ChatCompletion.create(
-        model=OPENROUTER_API_MODEL_NAME,
-        messages=[
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": OPENROUTER_API_MODEL_NAME,
+        "messages": [
             {"role": "system", "content": "Summarize the transcript into structured sections with timestamps."},
             {"role": "user", "content": transcript_text}
         ],
-        max_tokens=500
-    )
-    
-    return response["choices"][0]["message"]["content"]
+        "max_tokens": 500
+    }
 
-# Function to format summary into sections with timestamps
+    response = requests.post(f"{OPENROUTER_API_ENDPOINT}/chat/completions", json=data, headers=headers)
+
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"]
+    else:
+        st.error(f"Error: Unable to generate summary. Status code: {response.status_code}")
+        return None
+
+# Function to process the summary (extract sections and timestamps)
 def extract_sections(summary_text):
     try:
-        summary_json = json.loads(summary_text)  # Convert JSON string to Python dict
+        # Splitting into sections based on paragraph breaks
         sections = []
-        for section in summary_json["sections"]:
-            sections.append({
-                "title": section["title"],
-                "timestamp": section["timestamp"],
-                "summary": section["summary"]
-            })
+        paragraphs = summary_text.split("\n\n")  # Splitting paragraphs
+
+        for para in paragraphs:
+            if ":" in para:
+                parts = para.split(":")
+                title = parts[0].strip()
+                content = ":".join(parts[1:]).strip()
+                sections.append({
+                    "title": title,
+                    "timestamp": "00:00",  # AI doesn't return real timestamps
+                    "summary": content
+                })
         return sections
-    except json.JSONDecodeError:
-        st.error("Error: Unable to parse summary into sections.")
+    except Exception as e:
+        st.error(f"Error: Unable to process summary: {e}")
         return None
 
 # Main logic
