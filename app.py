@@ -4,100 +4,103 @@ import os
 import json
 from dotenv import load_dotenv
 
-# Load environment variables from .env
+# Load environment variables
 load_dotenv()
+
+# Retrieve API credentials
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_API_ENDPOINT = os.getenv("OPENROUTER_API_ENDPOINT")
 OPENROUTER_API_MODEL_NAME = os.getenv("OPENROUTER_API_MODEL_NAME")
 
-# Ensure API credentials exist
+# Validate API credentials
 if not OPENROUTER_API_KEY or not OPENROUTER_API_ENDPOINT:
     st.error("❌ API Key or API Endpoint is missing! Please check your .env file.")
     st.stop()
 
-# Streamlit UI
+# Streamlit App UI
 st.title("YouTube Summarizer App")
+st.write("Enter a YouTube video URL to generate a structured summary.")
+
+# Input field for YouTube video URL
 video_url = st.text_input("Enter YouTube Video URL:")
 
-# Language Selection
-languages = {
-    "English": "en",
-    "Simplified Chinese": "zh-CN",
-    "Traditional Chinese": "zh-TW",
-    "Spanish": "es",
-    "French": "fr",
-    "German": "de"
-}
-selected_language = st.selectbox("Choose Summary Language", list(languages.keys()))
-summary_type = st.radio("Select Summary Type", ["Basic", "Detailed"])
+# Language selection
+language = st.selectbox("Select summary language:", ["English", "Simplified Chinese", "Traditional Chinese"])
+summary_type = st.radio("Choose Summary Type:", ["Short", "Detailed"])
 
-# Extract YouTube video ID
-def extract_video_id(url):
-    import re
-    match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
-    return match.group(1) if match else None
-
-# Fetch transcript from proxy API
-def fetch_transcript(url):
-    video_id = extract_video_id(url)
-    if not video_id:
-        st.error("❌ Invalid YouTube URL.")
+# Function to extract video ID from YouTube URL
+def extract_video_id(video_url):
+    if "v=" in video_url:
+        return video_url.split("v=")[-1].split("&")[0]
+    elif "youtu.be/" in video_url:
+        return video_url.split("youtu.be/")[-1].split("?")[0]
+    else:
         return None
 
-    api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?password=for_demo&video_id={video_id}"
-    response = requests.get(api_url)
+# Function to fetch YouTube transcript from proxy API
+def fetch_transcript(video_url):
+    video_id = extract_video_id(video_url)
+    if not video_id:
+        st.error("❌ Invalid YouTube URL. Please enter a valid video URL.")
+        return None
+
+    # Proxy API URL for fetching transcripts
+    proxy_api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?password=for_demo&video_id={video_id}"
+    
+    # Make the API request
+    response = requests.get(proxy_api_url)
 
     if response.status_code == 200:
         return response.json()
     else:
-        st.warning(f"⚠️ No transcript found. AI will summarize in English. (Error {response.status_code})")
+        st.error(f"❌ Error fetching transcript. Status code: {response.status_code}")
         return None
 
-# Generate AI Summary
-def generate_summary(text, level="Basic", lang="English"):
-    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
-    prompt = f"Summarize in {lang}. Use structured sections. {'Detailed' if level == 'Detailed' else 'Concise'}."
+# Function to generate a structured summary using OpenRouter API
+def generate_summary(transcript_text, summary_type, language):
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    # Define the prompt based on summary type
+    summary_instruction = "Summarize the transcript into key points." if summary_type == "Short" else "Summarize the transcript in detail with timestamps."
+    
+    # Language translation
+    if language == "Simplified Chinese":
+        summary_instruction += " Translate the summary into Simplified Chinese."
+    elif language == "Traditional Chinese":
+        summary_instruction += " Translate the summary into Traditional Chinese."
 
     data = {
         "model": OPENROUTER_API_MODEL_NAME,
         "messages": [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": text}
+            {"role": "system", "content": summary_instruction},
+            {"role": "user", "content": transcript_text}
         ],
-        "max_tokens": 500
+        "max_tokens": 700
     }
-    
+
     response = requests.post(OPENROUTER_API_ENDPOINT, json=data, headers=headers)
-    
+
     if response.status_code == 200:
-        return response.json().get("choices", [{}])[0].get("message", {}).get("content", "❌ Error generating summary")
+        return response.json()["choices"][0]["message"]["content"]
     else:
-        st.error(f"❌ API Error: {response.status_code} - {response.text}")
+        st.error(f"❌ Error generating summary. API Response: {response.status_code} - {response.text}")
         return None
 
-# Translate Text (if needed)
-def translate_text(text, target_lang):
-    if target_lang == "en":
-        return text
-    params = {"q": text, "langpair": f"en|{target_lang}"}
-    response = requests.get("https://api.mymemory.translated.net/get", params=params)
-    return response.json().get("responseData", {}).get("translatedText", text)
+# Main logic
+if video_url:
+    transcript_data = fetch_transcript(video_url)
 
-# Process and Display Summary
-if video_url and st.button("Generate Summary"):
-    transcript = fetch_transcript(video_url)
-    
-    if transcript:
-        transcript_text = " ".join([t['text'] for t in transcript['transcript']])
-    else:
-        transcript_text = "No transcript available."
+    if transcript_data:
+        st.subheader("📜 Video Transcript")
+        transcript_text = " ".join([segment['text'] for segment in transcript_data['transcript']])
+        st.write(transcript_text)
 
-    # Generate summary in English
-    summary = generate_summary(transcript_text, summary_type, "English")
-    
-    if summary:
-        # Translate summary if needed
-        summary = translate_text(summary, languages[selected_language])
-        
-        st.subheader("Summary")
-        st.write(summary)
+        if st.button("📝 Generate Summary"):
+            summary_text = generate_summary(transcript_text, summary_type, language)
+
+            if summary_text:
+                st.subheader("📌 Generated Summary")
+                st.write(summary_text)
