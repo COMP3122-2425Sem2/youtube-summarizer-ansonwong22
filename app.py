@@ -1,159 +1,152 @@
 import streamlit as st
 import requests
+import json
 import os
-import openai
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# API Configuration
+# API Credentials
 GITHUB_API_KEY = os.getenv("GITHUB_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 GITHUB_API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")
 OPENROUTER_API_ENDPOINT = os.getenv("OPENROUTER_API_ENDPOINT")
 GITHUB_API_MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME", "gpt-4o-mini")
-OPENROUTER_API_MODEL_NAME = os.getenv("OPENROUTER_API_MODEL_NAME", "gpt-4o")
+OPENROUTER_API_MODEL_NAME = os.getenv("OPENROUTER_API_MODEL_NAME", "gpt-4o-mini")
 
-# Language Options
-LANGUAGES = {
-    "English": "en",
-    "Traditional Chinese": "zh-TW",
-    "Simplified Chinese": "zh"
-}
+# Select API Key
+API_KEY = GITHUB_API_KEY if GITHUB_API_KEY else OPENROUTER_API_KEY
+API_ENDPOINT = GITHUB_API_ENDPOINT if GITHUB_API_KEY else OPENROUTER_API_ENDPOINT
+API_MODEL_NAME = GITHUB_API_MODEL_NAME if GITHUB_API_KEY else OPENROUTER_API_MODEL_NAME
 
-# UI Texts for Different Languages
-UI_TEXTS = {
-    "en": {
-        "title": "YouTube Summarizer App",
-        "description": "Enter a YouTube video URL to generate a structured summary.",
-        "input_label": "Enter YouTube Video URL:",
-        "language_label": "Select Language:",
-        "fetch_transcript": "Fetching transcript...",
-        "generate_summary": "Generate Summary",
-        "summary": "Summary",
-        "fallback": "Transcript not available in {lang}. Falling back to English.",
-        "no_transcript": "No transcript available in any language.",
-        "error": "Error fetching transcript. Error Code: {code}",
-        "translation": "Translating...",
-        "translated": "Translated Summary"
-    },
-    "zh-TW": {
-        "title": "YouTube 摘要應用",
-        "description": "輸入 YouTube 影片 URL 以生成結構化摘要。",
-        "input_label": "輸入 YouTube 影片網址：",
-        "language_label": "選擇語言：",
-        "fetch_transcript": "正在獲取字幕...",
-        "generate_summary": "生成摘要",
-        "summary": "摘要",
-        "fallback": "未找到 {lang} 的字幕，將改用英文。",
-        "no_transcript": "沒有可用的字幕。",
-        "error": "獲取字幕錯誤，錯誤代碼：{code}",
-        "translation": "正在翻譯...",
-        "translated": "翻譯後的摘要"
-    },
-    "zh": {
-        "title": "YouTube 摘要应用",
-        "description": "输入 YouTube 视频 URL 以生成结构化摘要。",
-        "input_label": "输入 YouTube 视频网址：",
-        "language_label": "选择语言：",
-        "fetch_transcript": "正在获取字幕...",
-        "generate_summary": "生成摘要",
-        "summary": "摘要",
-        "fallback": "未找到 {lang} 的字幕，将改用英文。",
-        "no_transcript": "没有可用的字幕。",
-        "error": "获取字幕错误，错误代码：{code}",
-        "translation": "正在翻译...",
-        "translated": "翻译后的摘要"
-    }
-}
+if not API_KEY or not API_ENDPOINT:
+    st.error("Missing API Key or Endpoint. Please set up your API credentials.")
+    st.stop()
 
 # Streamlit UI
-st.set_page_config(page_title="YouTube Summarizer", layout="wide")
+st.title("YouTube Video Summarizer")
 
-# Select Language
-selected_lang = st.selectbox("🌍 " + UI_TEXTS["en"]["language_label"], list(LANGUAGES.keys()))
-lang_code = LANGUAGES[selected_lang]
-ui_text = UI_TEXTS[lang_code]
+# Video URL Input
+video_url = st.text_input("Enter YouTube Video URL:")
 
-st.title(ui_text["title"])
-st.write(ui_text["description"])
+# Language Selection
+language_options = {
+    "English": "en",
+    "Traditional Chinese": "zh-TW",
+    "Simplified Chinese": "zh-CN"
+}
+language = st.selectbox("Select Summary Language:", list(language_options.keys()))
 
-# YouTube URL Input
-video_url = st.text_input(ui_text["input_label"])
-
-# Extract YouTube Video ID
+# Extract Video ID
 def extract_video_id(url):
     if "v=" in url:
-        return url.split("v=")[-1]
+        return url.split("v=")[-1].split("&")[0]
     elif "youtu.be/" in url:
         return url.split("youtu.be/")[-1].split("?")[0]
     return None
 
-# Fetch Transcript
+# Fetch Transcript from Proxy API
 def fetch_transcript(video_id, lang_code):
-    st.info(ui_text["fetch_transcript"])
-    proxy_api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?password=for_demo&video_id={video_id}&lang={lang_code}"
-    
-    response = requests.get(proxy_api_url)
+    url = f"https://yt.vl.comp.polyu.edu.hk/transcript?language_code={lang_code}&password=for_demo&video_id={video_id}"
+    response = requests.get(url)
+
     if response.status_code == 200:
         return response.json()
-    elif lang_code != "en":
-        st.warning(ui_text["fallback"].format(lang=selected_lang))
-        return fetch_transcript(video_id, "en")
     else:
-        st.error(ui_text["error"].format(code=response.status_code))
+        st.error(f"Failed to fetch transcript. Error Code: {response.status_code}")
         return None
 
-# AI Translation
-def translate_text(text, target_lang):
-    st.info(ui_text["translation"])
-    response = openai.ChatCompletion.create(
-        model=OPENROUTER_API_MODEL_NAME,
-        messages=[
-            {"role": "system", "content": f"Translate the following text into {target_lang}."},
-            {"role": "user", "content": text}
-        ]
-    )
-    return response["choices"][0]["message"]["content"]
+# Generate Summary via API
+def generate_summary(transcript_text, detail_level="standard", lang_code="en"):
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+    prompt = f"Summarize the transcript into structured sections with timestamps in {language_options[language]}."
+    
+    if detail_level == "detailed":
+        prompt += " Include detailed explanations for each section."
+    elif detail_level == "concise":
+        prompt += " Make it short and precise."
+    elif detail_level == "fun":
+        prompt += " Add emojis and a fun tone."
 
-# Generate Summary
-def generate_summary(text, model="gpt-4o-mini"):
-    headers = {"Authorization": f"Bearer {GITHUB_API_KEY or OPENROUTER_API_KEY}"}
     data = {
-        "model": model,
+        "model": API_MODEL_NAME,
         "messages": [
-            {"role": "system", "content": "Summarize the following transcript into structured sections with timestamps."},
-            {"role": "user", "content": text}
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": transcript_text}
         ],
         "max_tokens": 500
     }
-    response = requests.post(GITHUB_API_ENDPOINT or OPENROUTER_API_ENDPOINT, json=data, headers=headers)
-
+    response = requests.post(API_ENDPOINT, json=data, headers=headers)
+    
     if response.status_code == 200:
         return response.json()["choices"][0]["message"]["content"]
     else:
-        st.error(ui_text["error"].format(code=response.status_code))
+        st.error(f"Error: Unable to generate summary. Status code: {response.status_code}")
         return None
 
-# Process Transcript & Generate Summary
+# Process Summary into Sections
+def extract_sections(summary_text, video_id):
+    sections = []
+    paragraphs = summary_text.split("\n\n")
+
+    for para in paragraphs:
+        if ":" in para:
+            parts = para.split(":")
+            title = parts[0].strip()
+            content = ":".join(parts[1:]).strip()
+            timestamp = "00:00"
+            link = f"https://www.youtube.com/watch?v={video_id}&t={timestamp}"
+
+            sections.append({
+                "title": title,
+                "timestamp": timestamp,
+                "summary": content,
+                "link": link
+            })
+    return sections
+
+# Main Execution
 if video_url:
     video_id = extract_video_id(video_url)
+
     if video_id:
-        transcript_data = fetch_transcript(video_id, lang_code)
+        transcript_data = fetch_transcript(video_id, language_options[language])
 
         if transcript_data:
+            st.subheader("Video Transcript")
             transcript_text = " ".join([segment['text'] for segment in transcript_data['transcript']])
+            st.text_area("Full Transcript", transcript_text, height=200)
 
-            if st.button(ui_text["generate_summary"]):
-                summary_text = generate_summary(transcript_text)
+            # Summary Buttons
+            col1, col2, col3, col4 = st.columns(4)
+            if col1.button("Generate Summary"):
+                summary_text = generate_summary(transcript_text, "standard", language_options[language])
+            if col2.button("Detailed Summary"):
+                summary_text = generate_summary(transcript_text, "detailed", language_options[language])
+            if col3.button("Concise Summary"):
+                summary_text = generate_summary(transcript_text, "concise", language_options[language])
+            if col4.button("Fun Summary 🎉"):
+                summary_text = generate_summary(transcript_text, "fun", language_options[language])
 
-                if lang_code != "en":
-                    summary_text = translate_text(summary_text, lang_code)
-                    st.subheader(ui_text["translated"])
-                else:
-                    st.subheader(ui_text["summary"])
+            if summary_text:
+                st.subheader("Summary")
+                sections = extract_sections(summary_text, video_id)
 
-                st.write(summary_text)
+                for section in sections:
+                    st.subheader(f"{section['title']} - ⏳ {section['timestamp']}")
+                    st.write(section["summary"])
+                    st.markdown(f"[Watch this part on YouTube]({section['link']})")
+
+                # Editable Summaries
+                st.subheader("Edit Summaries")
+                for section in sections:
+                    new_summary = st.text_area(f"Edit: {section['title']}", section["summary"])
+                    if st.button(f"Save {section['title']}"):
+                        section["summary"] = new_summary
+                        st.success(f"Updated summary for {section['title']}.")
+
+                # Download as HTML
+                st.download_button("Download Summary as HTML", data=summary_text, file_name="summary.html", mime="text/html")
     else:
-        st.error(ui_text["error"].format(code="Invalid YouTube URL"))
+        st.error("Invalid YouTube URL. Please enter a valid video URL.")
