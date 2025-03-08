@@ -3,19 +3,18 @@ import requests
 import os
 import json
 from dotenv import load_dotenv
-from urllib.parse import urlencode
 
 # Load environment variables
 load_dotenv()
 
-# Retrieve API credentials from both GitHub Model and OpenRouter
-API_KEY = os.getenv("GITHUB_API_KEY") or os.getenv("OPENROUTER_API_KEY")
-API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT") or os.getenv("OPENROUTER_API_ENDPOINT")
-MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME") or os.getenv("OPENROUTER_API_MODEL_NAME")
+# Retrieve GitHub API credentials
+API_KEY = os.getenv("GITHUB_API_KEY")
+API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")
+MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")
 
 # Validate API keys and endpoints
-if not API_KEY or not API_ENDPOINT:
-    st.error("❌ API Key or API Endpoint is missing! Please check your .env file.")
+if not API_KEY or not API_ENDPOINT or not MODEL_NAME:
+    st.error("❌ Missing API Key, Endpoint, or Model Name. Please check your .env file.")
     st.stop()
 
 # Streamlit UI
@@ -43,7 +42,7 @@ def extract_video_id(url):
         return url.split("youtu.be/")[-1].split("?")[0]
     return None
 
-# Function to fetch transcript using proxy API
+# Function to fetch transcript using the proxy API
 def fetch_transcript(video_id, lang_code="en"):
     proxy_api_url = f"https://yt.vl.comp.polyu.edu.hk/transcript?password=for_demo&video_id={video_id}&language_code={lang_code}"
     response = requests.get(proxy_api_url)
@@ -53,7 +52,7 @@ def fetch_transcript(video_id, lang_code="en"):
     else:
         return None
 
-# Function to generate summary using AI
+# Function to generate summary using GitHub API
 def generate_summary(transcript_text, detail_level, language):
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -74,7 +73,28 @@ def generate_summary(transcript_text, detail_level, language):
     else:
         return None
 
-# Function to format timestamp
+# Function to translate text using GitHub API
+def translate_text(text, target_lang):
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": f"Translate the following text to {target_lang}."},
+            {"role": "user", "content": text}
+        ],
+        "max_tokens": 1000
+    }
+    response = requests.post(API_ENDPOINT, json=data, headers=headers)
+
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"]
+    else:
+        return text  # If translation fails, return the original text
+
+# Function to format timestamp to hh:mm:ss
 def format_timestamp(seconds):
     return f"{int(seconds // 3600):02}:{int((seconds % 3600) // 60):02}:{int(seconds % 60):02}"
 
@@ -97,11 +117,19 @@ if st.button("Generate Summary"):
             st.write(transcript_text)
 
             # Generate the summary
-            summary_text = generate_summary(transcript_text, summary_type.lower(), summary_language)
+            summary_text = generate_summary(transcript_text, summary_type.lower(), "English")
 
             if summary_text:
-                st.subheader("📌 Summary")
+                st.subheader("📌 Summary (Original)")
                 st.write(summary_text)
+
+                # Translate summary if selected language is not English
+                if summary_language in ["Traditional Chinese", "Simplified Chinese"]:
+                    translated_summary = translate_text(summary_text, language_options[summary_language])
+                    st.subheader(f"📌 Summary ({summary_language})")
+                    st.write(translated_summary)
+                else:
+                    translated_summary = summary_text  # Keep original if English is selected
 
                 # Generate section-based summary with timestamps
                 st.subheader("⏳ Sections")
@@ -118,7 +146,7 @@ if st.button("Generate Summary"):
                 st.markdown("\n\n".join(section_summaries))
 
                 # Editable summary
-                edited_summary = st.text_area("✏️ Edit Summary:", summary_text)
+                edited_summary = st.text_area("✏️ Edit Summary:", translated_summary)
                 if st.button("Save Summary"):
                     st.success("✅ Summary updated successfully!")
 
