@@ -8,10 +8,10 @@ from urllib.parse import urlencode
 # Load environment variables
 load_dotenv()
 
-# Retrieve API credentials
-API_KEY = os.getenv("GITHUB_API_KEY")  # Change to OPENROUTER_API_KEY if needed
-API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT")  # Change to OPENROUTER_API_ENDPOINT if needed
-MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME")  # Change to OPENROUTER_API_MODEL_NAME if needed
+# Retrieve API credentials from both GitHub Model and OpenRouter
+API_KEY = os.getenv("GITHUB_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+API_ENDPOINT = os.getenv("GITHUB_API_ENDPOINT") or os.getenv("OPENROUTER_API_ENDPOINT")
+MODEL_NAME = os.getenv("GITHUB_API_MODEL_NAME") or os.getenv("OPENROUTER_API_MODEL_NAME")
 
 # Validate API keys and endpoints
 if not API_KEY or not API_ENDPOINT:
@@ -35,7 +35,7 @@ summary_language = st.selectbox("Select summary language:", list(language_option
 # Summary detail level
 summary_type = st.radio("Choose summary detail level:", ["Basic", "Detailed", "Fun"])
 
-# Function to extract video ID
+# Function to extract video ID from URL
 def extract_video_id(url):
     if "v=" in url:
         return url.split("v=")[-1].split("&")[0]
@@ -74,26 +74,9 @@ def generate_summary(transcript_text, detail_level, language):
     else:
         return None
 
-# Function to translate text if transcript is only in English
-def translate_text(text, target_lang):
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": f"Translate the following text to {target_lang}."},
-            {"role": "user", "content": text}
-        ],
-        "max_tokens": 500
-    }
-    response = requests.post(API_ENDPOINT, json=data, headers=headers)
-
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        return text  # If translation fails, return the original text
+# Function to format timestamp
+def format_timestamp(seconds):
+    return f"{int(seconds // 3600):02}:{int((seconds % 3600) // 60):02}:{int(seconds % 60):02}"
 
 # Generate Summary Button
 if st.button("Generate Summary"):
@@ -113,10 +96,7 @@ if st.button("Generate Summary"):
             st.subheader("📜 Transcript")
             st.write(transcript_text)
 
-            # Automatically translate the transcript if the user selected another language
-            if summary_language != "English":
-                transcript_text = translate_text(transcript_text, summary_language)
-
+            # Generate the summary
             summary_text = generate_summary(transcript_text, summary_type.lower(), summary_language)
 
             if summary_text:
@@ -125,19 +105,24 @@ if st.button("Generate Summary"):
 
                 # Generate section-based summary with timestamps
                 st.subheader("⏳ Sections")
+                section_summaries = []
+                
                 for segment in transcript_data['transcript']:
                     start_time = segment['start']
-                    formatted_time = f"{int(start_time // 3600):02}:{int((start_time % 3600) // 60):02}:{int(start_time % 60):02}"
+                    formatted_time = format_timestamp(start_time)
                     youtube_link = f"{video_url}&t={int(start_time)}"
                     
-                    st.markdown(f"**[{formatted_time}]({youtube_link})**: {segment['text']}")
+                    section_summary = f"**[{formatted_time}]({youtube_link})**: {segment['text']}"
+                    section_summaries.append(section_summary)
+                
+                st.markdown("\n\n".join(section_summaries))
 
-                # Allow editing summary
+                # Editable summary
                 edited_summary = st.text_area("✏️ Edit Summary:", summary_text)
                 if st.button("Save Summary"):
                     st.success("✅ Summary updated successfully!")
 
-                # Download summary
+                # Download summary as HTML
                 if st.button("⬇️ Download Summary as HTML"):
                     html_content = f"<html><body><h1>Video Summary</h1><p>{edited_summary}</p></body></html>"
                     st.download_button(label="Download", data=html_content, file_name="summary.html", mime="text/html")
